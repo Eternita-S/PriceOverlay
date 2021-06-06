@@ -29,7 +29,7 @@ namespace PriceOverlay
         internal GetInventoryContainer getInventoryContainer;
         internal GetContainerSlot getContainerSlot;
         internal ItemodrReader reader;
-        internal HashSet<(float x, float y, string text)> gui = new HashSet<(float x, float y, string text)>();
+        internal HashSet<(float x, float y, string text, string id)> gui = new HashSet<(float x, float y, string text, string id)>();
         internal Dictionary<string, List<(int slotIndex, int containerIndex)>> order;
         internal (float x, float y, float w, float h) tooltiparea;
         internal SemaphoreSlim orderSemaphore;
@@ -43,6 +43,7 @@ namespace PriceOverlay
             pi.UiBuilder.OnBuildUi -= Draw;
             pi.Framework.OnUpdateEvent -= Tick;
             pi.CommandManager.RemoveHandler("/oprice");
+            itemodrWatcher.EnableRaisingEvents = false;
             itemodrWatcher.Dispose();
             pi.Dispose();
         }
@@ -78,7 +79,11 @@ namespace PriceOverlay
             orderSemaphore.Wait();
             order = reader.ParseItemOrder();
             orderSemaphore.Release();
-            if (itemodrWatcher != null) itemodrWatcher.Dispose();
+            if (itemodrWatcher != null)
+            {
+                itemodrWatcher.EnableRaisingEvents = false;
+                itemodrWatcher.Dispose();
+            }
             itemodrWatcher = new FileSystemWatcher(itemodrPath);
             itemodrWatcher.NotifyFilter = NotifyFilters.LastWrite;
             itemodrWatcher.Filter = "ITEMODR.DAT";
@@ -182,9 +187,14 @@ namespace PriceOverlay
                                     }
                                 }
                                 tooltiparea = (x: 0f, y: 0f, w: 0f, h: 0f);
-                                CheckObstructedArea("ItemDetail");
-                                CheckObstructedArea("ContextMenu");
-                                CheckObstructedArea("AddonContextSub");
+                                if (!((AtkComponentNode*)invlargeAtk->UldManager.NodeList[1])->Component->UldManager.NodeList[3]->IsVisible)
+                                {
+                                    CheckObstructedArea("ItemSearch");
+                                    CheckObstructedArea("SelectYesno");
+                                    CheckObstructedArea("AddonContextSub");
+                                    CheckObstructedArea("ContextMenu");
+                                    CheckObstructedArea("ItemDetail");
+                                }
                                 if (inv0 != IntPtr.Zero && inv1 != IntPtr.Zero)
                                 {
                                     if (activeTab == 0)
@@ -219,10 +229,10 @@ namespace PriceOverlay
                 var atkobj = (AtkUnitBase*)obj;
                 if (atkobj->IsVisible)
                 {
-                    tooltiparea.x = atkobj->X;
-                    tooltiparea.y = atkobj->Y;
-                    tooltiparea.w = atkobj->RootNode->Width * atkobj->RootNode->ScaleX;
-                    tooltiparea.h = atkobj->RootNode->Height * atkobj->RootNode->ScaleY;
+                    tooltiparea.x = atkobj->X-20;
+                    tooltiparea.y = atkobj->Y-15;
+                    tooltiparea.w = atkobj->RootNode->Width * atkobj->RootNode->ScaleX + 40;
+                    tooltiparea.h = atkobj->RootNode->Height * atkobj->RootNode->ScaleY + 30;
                 }
             }
         }
@@ -247,7 +257,7 @@ namespace PriceOverlay
                 {
                     if (priceCache.ContainsKey(slot->ItemId))
                     {
-                        text.Append(slot->GetItem(pi).PriceLow);
+                        text.Append(priceCache[slot->ItemId].minprice);
                     }
                     else
                     {
@@ -256,7 +266,7 @@ namespace PriceOverlay
                 }
                 if (text.Length != 0)
                 {
-                    gui.Add((x, y, text.ToString()));
+                    gui.Add((x, y, text.ToString(), (int)slot->Container + "@" + slot->Slot));
                 }
             }
         }
@@ -265,7 +275,6 @@ namespace PriceOverlay
         {
             if (drawGui)
             {
-                int counter = 0;
                 bool _ = true;
                 foreach(var element in gui)
                 {
@@ -273,7 +282,7 @@ namespace PriceOverlay
                     ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(element.x - textsize.X/2 - 1, element.y + 5));
                     ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(2, 0));
                     ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, new Vector2(0, 0));
-                    ImGui.Begin("PriceOverlayElement##" + ++counter, ref _,
+                    ImGui.Begin("PriceOverlayElement##" + element.id, ref _,
                         ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoScrollbar
                         | ImGuiWindowFlags.NoNav | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize
                         | ImGuiWindowFlags.NoInputs | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.AlwaysUseWindowPadding);
