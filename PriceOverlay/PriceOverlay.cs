@@ -190,11 +190,11 @@ namespace PriceOverlay
                                 if (!((AtkComponentNode*)invlargeAtk->UldManager.NodeList[1])->Component->UldManager.NodeList[3]->IsVisible)
                                 {
                                     CheckObstructedArea("ItemSearch");
-                                    CheckObstructedArea("SelectYesno");
-                                    CheckObstructedArea("AddonContextSub");
-                                    CheckObstructedArea("ContextMenu");
-                                    CheckObstructedArea("ItemDetail");
                                 }
+                                CheckObstructedArea("SelectYesno");
+                                CheckObstructedArea("AddonContextSub");
+                                CheckObstructedArea("ContextMenu");
+                                CheckObstructedArea("ItemDetail");
                                 if (inv0 != IntPtr.Zero && inv1 != IntPtr.Zero)
                                 {
                                     if (activeTab == 0)
@@ -249,6 +249,8 @@ namespace PriceOverlay
                 var slot = getContainerSlot(inv[order["PlayerInventory"][n + 35 * invIndex].containerIndex], order["PlayerInventory"][n + 35 * invIndex].slotIndex);
                 if (slot->ItemId == 0) continue;
                 var text = new StringBuilder();
+                text.Append(slot->ItemId);
+                /*text.Append("\n");
                 if (slot->GetItem(pi).IsUntradable)
                 {
                     text.Append("UNTR");
@@ -263,7 +265,7 @@ namespace PriceOverlay
                     {
                         text.Append("???");
                     }
-                }
+                }*/
                 if (text.Length != 0)
                 {
                     gui.Add((x, y, text.ToString(), (int)slot->Container + "@" + slot->Slot));
