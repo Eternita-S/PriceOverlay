@@ -75,9 +75,7 @@ namespace PriceOverlay
 
         public Dictionary<string, List<(int slotIndex, int containerIndex)>> ParseItemOrder()
         {
-            using (FileStream reader = File.OpenRead(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "My Games", "FINAL FANTASY XIV - A Realm Reborn",
-            $"FFXIV_CHR{p.pi.ClientState.LocalContentId:X16}", "ITEMODR.DAT")))
+            using (FileStream reader = File.OpenRead(Path.Combine(p.itemodrPath, "ITEMODR.DAT")))
             {
                 Advance(reader, 16);
                 Dictionary<string, List<(int slotIndex, int containerIndex)>> data = new Dictionary<string, List<(int slotIndex, int containerIndex)>>();
@@ -112,9 +110,9 @@ namespace PriceOverlay
                             case 0x4E:
                                 {
                                     return data; //idc about retainers for now
-                                                 //var retainers = readRetainers(reader);
-                                                 //data.Retainers = retainers;
-                                                 //break;
+                                    //var retainers = readRetainers(reader);
+                                    //data.Retainers = retainers;
+                                    //break;
                                 }
 
                             case 0x73:
