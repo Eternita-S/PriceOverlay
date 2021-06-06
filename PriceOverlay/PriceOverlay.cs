@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Numerics;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
@@ -19,7 +20,7 @@ namespace PriceOverlay
     unsafe class PriceOverlay : IDalamudPlugin
     {
         internal DalamudPluginInterface pi;
-        internal Dictionary<ushort, long> prices;
+        internal HashSet<uint> pending;
         internal Dictionary<int, string> overlays;
         internal bool drawGui = false;
         internal IntPtr inventoryManager;
@@ -34,6 +35,7 @@ namespace PriceOverlay
         internal SemaphoreSlim orderSemaphore;
         internal string itemodrPath;
         internal FileSystemWatcher itemodrWatcher;
+        internal Dictionary<uint, (long minprice, long avgprice, long avghistory, long minhqprice, long avghqprice, long avghqhistory)> priceCache;
         public string Name => "PriceOverlay";
 
         public void Dispose()
@@ -64,7 +66,8 @@ namespace PriceOverlay
 
         void OnLogin(object _ = null, object __ = null)
         {
-            prices = new Dictionary<ushort, long>();
+            priceCache = new Dictionary<uint, (long minprice, long avgprice, long avghistory, long minhqprice, long avghqprice, long avghqhistory)>();
+            pending = new HashSet<uint>();
             overlays = new Dictionary<int, string>();
             itemodrPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "My Games", "FINAL FANTASY XIV - A Realm Reborn",
@@ -113,7 +116,23 @@ namespace PriceOverlay
         {
             try
             {
-                order = reader.ParseItemOrder();
+                var str = string.Join(",", pending);
+                pi.Framework.Gui.Chat.Print(str);
+                Task.Run(delegate {
+                    var task = new HttpClient().GetAsync("https://universalis.app/api/Spriggan/" + str);
+                    task.Wait(5000);
+                    if (task.IsCompleted)
+                    {
+                        var task2 = task.Result.Content.ReadAsStringAsync();
+                        task2.Wait();
+                        pi.Framework.Gui.Chat.Print("Received response of "+ task2.Result.Length + " length");
+                    }
+                    else
+                    {
+                        task.Dispose();
+                        pi.Framework.Gui.Chat.Print("Request timed out");
+                    }
+                });
             }
             catch (Exception e)
             {
@@ -137,31 +156,35 @@ namespace PriceOverlay
                         {
                             var inv0 = pi.Framework.Gui.GetUiObjectByName("InventoryGrid0", 1);
                             var inv1 = pi.Framework.Gui.GetUiObjectByName("InventoryGrid1", 1);
-                            var detail = pi.Framework.Gui.GetUiObjectByName("ItemDetail", 1);
                             gui.Clear();
                             var activeTab = ((AtkComponentNode*)invlargeAtk->UldManager.NodeList[69])->Component->UldManager.NodeList[2]->IsVisible ? 0 :
                                 ((AtkComponentNode*)invlargeAtk->UldManager.NodeList[68])->Component->UldManager.NodeList[2]->IsVisible ? 1 :
                                 -1;
                             if (activeTab != -1)
                             {
-                                InventoryContainer*[] inv = {
-                                getInventoryContainer(inventoryManager, (int)InventoryType.Bag0),
-                                getInventoryContainer(inventoryManager, (int)InventoryType.Bag1),
-                                getInventoryContainer(inventoryManager, (int)InventoryType.Bag2),
-                                getInventoryContainer(inventoryManager, (int)InventoryType.Bag3)
-                            };
-                                tooltiparea = (x: 0f, y: 0f, w: 0f, h: 0f);
-                                if (detail != IntPtr.Zero)
+                                InventoryContainer*[] inv = 
                                 {
-                                    var detailaddon = (AtkUnitBase*)detail;
-                                    if (detailaddon->IsVisible)
+                                    getInventoryContainer(inventoryManager, (int)InventoryType.Bag0),
+                                    getInventoryContainer(inventoryManager, (int)InventoryType.Bag1),
+                                    getInventoryContainer(inventoryManager, (int)InventoryType.Bag2),
+                                    getInventoryContainer(inventoryManager, (int)InventoryType.Bag3)
+                                };
+                                pending.Clear();
+                                foreach(var inventory in inv)
+                                {
+                                    for(var i = 0; i < inventory->SlotCount; i++)
                                     {
-                                        tooltiparea.x = detailaddon->X;
-                                        tooltiparea.y = detailaddon->Y;
-                                        tooltiparea.w = detailaddon->RootNode->Width * detailaddon->RootNode->ScaleX;
-                                        tooltiparea.h = detailaddon->RootNode->Height * detailaddon->RootNode->ScaleY;
+                                        var item = getContainerSlot(inventory, i);
+                                        if (item->ItemId != 0 && !item->GetItem(pi).IsUntradable && !priceCache.ContainsKey(item->ItemId))
+                                        {
+                                            pending.Add(item->ItemId);
+                                        }
                                     }
                                 }
+                                tooltiparea = (x: 0f, y: 0f, w: 0f, h: 0f);
+                                CheckObstructedArea("ItemDetail");
+                                CheckObstructedArea("ContextMenu");
+                                CheckObstructedArea("AddonContextSub");
                                 if (inv0 != IntPtr.Zero && inv1 != IntPtr.Zero)
                                 {
                                     if (activeTab == 0)
@@ -188,6 +211,22 @@ namespace PriceOverlay
             }
         }
 
+        void CheckObstructedArea(string addon)
+        {
+            var obj = pi.Framework.Gui.GetUiObjectByName(addon, 1);
+            if (obj != IntPtr.Zero)
+            {
+                var atkobj = (AtkUnitBase*)obj;
+                if (atkobj->IsVisible)
+                {
+                    tooltiparea.x = atkobj->X;
+                    tooltiparea.y = atkobj->Y;
+                    tooltiparea.w = atkobj->RootNode->Width * atkobj->RootNode->ScaleX;
+                    tooltiparea.h = atkobj->RootNode->Height * atkobj->RootNode->ScaleY;
+                }
+            }
+        }
+
         void AddGuiOverlays(AtkUnitBase* invnode, InventoryContainer*[] inv, int invIndex)
         {
             var basex = invnode->X + invnode->UldManager.NodeList[2]->X * invnode->Scale;
@@ -204,9 +243,16 @@ namespace PriceOverlay
                 {
                     text.Append("UNTR");
                 }
-                else if(slot->GetItem(pi).PriceLow != 0)
+                else
                 {
-                    text.Append(slot->GetItem(pi).PriceLow);
+                    if (priceCache.ContainsKey(slot->ItemId))
+                    {
+                        text.Append(slot->GetItem(pi).PriceLow);
+                    }
+                    else
+                    {
+                        text.Append("???");
+                    }
                 }
                 if (text.Length != 0)
                 {
