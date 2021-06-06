@@ -190,6 +190,7 @@ namespace PriceOverlay
                                 if (!((AtkComponentNode*)invlargeAtk->UldManager.NodeList[1])->Component->UldManager.NodeList[3]->IsVisible)
                                 {
                                     CheckObstructedArea("ItemSearch");
+                                    CheckObstructedArea("Trade");
                                 }
                                 CheckObstructedArea("SelectYesno");
                                 CheckObstructedArea("AddonContextSub");
